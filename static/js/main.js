@@ -39,24 +39,34 @@ document.addEventListener('DOMContentLoaded', function() {
         documentContent.innerHTML = '<p style="color: #555; padding: 1.5rem;">Yükleniyor...</p>';
         documentHeader.textContent = '';
         
+        // ---- YENİ EKLENEN KISIM: OTOMATİK KAYDIRMA ----
+        // Eğer mobil düzendeysek (yani body'nin flex-direction'ı column ise),
+        // içerik alanına doğru yumuşak bir geçiş yap.
+        if (window.getComputedStyle(document.body).flexDirection === 'column') {
+            documentViewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        // ---------------------------------------------
+        
         try {
-            // 1. DOKÜMAN BAŞLIĞINI GÖSTER
             const filename = path.split('/').pop();
             documentHeader.textContent = filename;
 
-            // 2. İÇERİĞİ GETİR
             const response = await fetch(`/get_content?path=${encodeURIComponent(path)}`);
             if (!response.ok) throw new Error('Dosya yüklenemedi.');
             
             const data = await response.json();
             const content = data.content;
-            const escapedContent = content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            let escapedContent = content.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
-            // 3. SYNTAX HIGHLIGHTING İÇİN HAZIRLA
+            if (searchTerm) {
+                const regex = new RegExp(searchTerm, 'gi');
+                escapedContent = escapedContent.replace(regex, (match) => `<mark>${match}</mark>`);
+            }
+            
             let languageClass = path.endsWith('.sql') ? 'language-sql' : 'language-plaintext';
             const codeElement = document.createElement('code');
             codeElement.className = languageClass;
-            codeElement.innerHTML = escapedContent; // Henüz mark etiketi yok
+            codeElement.innerHTML = escapedContent;
 
             const preElement = document.createElement('pre');
             preElement.className = languageClass;
@@ -65,16 +75,7 @@ document.addEventListener('DOMContentLoaded', function() {
             documentContent.innerHTML = '';
             documentContent.appendChild(preElement);
 
-            // 4. PRISM'İ ÇALIŞTIR
             Prism.highlightAll();
-
-            // 5. ARAMA KELİMESİNİ VURGULA (Prism'den SONRA)
-            if (searchTerm) {
-                const regex = new RegExp(searchTerm, 'gi');
-                // Prism'in oluşturduğu HTML üzerinde arama ve değiştirme yap
-                const highlightedHtml = documentContent.innerHTML.replace(regex, (match) => `<mark>${match}</mark>`);
-                documentContent.innerHTML = highlightedHtml;
-            }
 
         } catch (error) {
             documentContent.innerHTML = `<p style="color:red; padding: 1.5rem;">Hata: ${error.message}</p>`;
