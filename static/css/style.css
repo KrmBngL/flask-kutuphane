@@ -10,6 +10,9 @@ body {
 #sidebar { 
     width: 300px; min-width: 250px; background-color: var(--sidebar-bg);
     border-right: 1px solid var(--border-color); padding: 1rem; overflow-y: auto; transition: width 0.3s ease;
+    /* EKLENDİ: Katmanlama için */
+    position: relative;
+    z-index: 10;
 }
 #sidebar h3 { margin-top: 0; color: var(--text-dark); }
 #home-button {
@@ -60,6 +63,9 @@ body {
 }
 #content-area { 
     flex-grow: 1; padding: 1.5rem; overflow-y: scroll;
+    /* EKLENDİ: Katmanlama için */
+    position: relative;
+    z-index: 20; /* Sidebar'dan daha yüksek bir değer */
 }
 #document-viewer {
     background-color: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;
@@ -92,28 +98,20 @@ mark {
     border-radius: 3px;
     padding: 1px 2px;
 }
-
-/* ---- MOBİL GÖRÜNÜM DÜZELTMESİ BURADA ---- */
 @media (max-width: 800px) {
     body { 
-        flex-direction: column; /* Öğeleri alt alta diz */
-        overflow-y: auto;       /* Sadece tüm sayfanın kaymasını sağla */
-        height: auto;           /* Yüksekliği içeriğe göre ayarla */
+        flex-direction: column; overflow-y: auto; height: auto;
     }
     #sidebar { 
-        width: 100%;            /* Tam genişlik */
-        height: auto;           /* Yüksekliği içeriğine göre ayarla */
-        min-height: unset;      /* Minimum yüksekliği kaldır */
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        overflow-y: visible;    /* Kendi içinde kaymasını engelle, sayfa kaysın */
+        width: 100%; height: auto; min-height: unset; border-right: none;
+        border-bottom: 1px solid var(--border-color); overflow-y: visible;
+        z-index: 20; /* Mobil düzende menü üstte kalmalı */
     }
     #content-area { 
-        width: 100%;
-        height: auto;           /* Yüksekliği içeriğine göre ayarla */
-        overflow-y: visible;    /* Kendi içinde kaymasını engelle */
+        width: 100%; height: auto; overflow-y: visible;
+        z-index: 10;
     }
     #document-viewer {
-        min-height: 50vh;       /* Doküman alanı en azından biraz yer kaplasın */
+        min-height: 50vh;
     }
 }
