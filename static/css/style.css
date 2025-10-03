@@ -10,7 +10,6 @@ body {
 #sidebar { 
     width: 300px; min-width: 250px; background-color: var(--sidebar-bg);
     border-right: 1px solid var(--border-color); padding: 1rem; overflow-y: auto; transition: width 0.3s ease;
-    /* EKLENDİ: Katmanlama için */
     position: relative;
     z-index: 10;
 }
@@ -63,9 +62,8 @@ body {
 }
 #content-area { 
     flex-grow: 1; padding: 1.5rem; overflow-y: scroll;
-    /* EKLENDİ: Katmanlama için */
     position: relative;
-    z-index: 20; /* Sidebar'dan daha yüksek bir değer */
+    z-index: 20;                                                             /* Burası şokomelli, sidear dan daha yüksek bir değer olması lazım */
 }
 #document-viewer {
     background-color: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;
@@ -105,7 +103,7 @@ mark {
     #sidebar { 
         width: 100%; height: auto; min-height: unset; border-right: none;
         border-bottom: 1px solid var(--border-color); overflow-y: visible;
-        z-index: 20; /* Mobil düzende menü üstte kalmalı */
+        z-index: 20;                                                     /* Js de bahsettiğim mobil düzende menünün üstte kalma durumu burada yapılıyor. */
     }
     #content-area { 
         width: 100%; height: auto; overflow-y: visible;

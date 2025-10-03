@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Elementleri seçme
+    // index.html de yer alan tüm elementleri buradan seçiyoruz.
+
     const fileListDiv = document.getElementById('file-list');
     const searchBox = document.getElementById('search-box');
     const searchResultsDiv = document.getElementById('search-results');
@@ -10,7 +11,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const documentHeader = document.getElementById('document-header');
     const documentContent = document.getElementById('document-content');
 
-    // --- OLAY DİNLEYİCİLERİ ---
+    //  Butonların ve inputların düzenlendiği yer
+
     homeButton.addEventListener('click', showWelcomeMessage);
     searchBox.addEventListener('input', handleSearch);
 
@@ -27,7 +29,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // --- FONKSİYONLAR ---
+    // fonksiyonlar
+
     function showWelcomeMessage() {
         welcomeMessage.style.display = 'flex';
         documentViewer.style.display = 'none';
@@ -39,9 +42,10 @@ document.addEventListener('DOMContentLoaded', function() {
         documentContent.innerHTML = '<p style="color: #555; padding: 1.5rem;">Yükleniyor...</p>';
         documentHeader.textContent = '';
         
-        // ---- YENİ EKLENEN KISIM: OTOMATİK KAYDIRMA ----
-        // Eğer mobil düzendeysek (yani body'nin flex-direction'ı column ise),
-        // içerik alanına doğru yumuşak bir geçiş yap.
+        // Bu kısmı en son ekledim. Normalde mobilde bir doküman seçince aşağı kaydırmak gerekiyordu.
+        // Bu satır ile beraber doküman seçince hemen slide işlemi ile aşağıda doküman içeriğini gösteriyor.
+        // Mobil için yazıldı.
+
         if (window.getComputedStyle(document.body).flexDirection === 'column') {
             documentViewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }

@@ -4,6 +4,8 @@ import fitz # PyMuPDF
 from whoosh.index import open_dir
 from whoosh.qparser import QueryParser
 
+# Normalde Tkinter de bu işi bir exe ile görürdü ama flask ile web gui yapma açısında daha rahat ve konforlü oldu.
+
 app = Flask(__name__)
 
 KUTUPHANE_DIR = 'Kütüphanem'
@@ -11,14 +13,14 @@ INDEX_DIR = 'indexdir'
 
 def get_file_tree():
     tree = []
-    # Teknoloji isimleri ve logo dosyalarını eşleştirelim
+    # Her bir teknoloji için logo ekledim. 
     tech_logos = {
         "Oracle": "oracle.png",
         "PostgreSQL": "postgresql.png",
         "SQL Server": "sql_server.png"
     }
     
-    # Klasör isimlerine göre sıralama yapabiliriz
+    # Her teknoloji için bir klasör açtım ve bunları buton tarzında sıraladım. tech_folders ın bir diğer amacı da, iç klasörleri de tutması için.
     tech_folders = sorted(os.listdir(KUTUPHANE_DIR))
 
     for tech in tech_folders:
@@ -27,10 +29,12 @@ def get_file_tree():
             files = [f for f in os.listdir(tech_path) if os.path.isfile(os.path.join(tech_path, f))]
             tree.append({
                 "name": tech,
-                "logo": tech_logos.get(tech, 'default.png'), # Logo bulunamazsa default bir ikon kullanılabilir
+                "logo": tech_logos.get(tech, 'default.png'), # Burada bir ekstra durum belirttim. Mesela images klasöründe tech_logos ta olan bir png yoksa, default bir logo koy dedim. Ya boş ya da saçma sapan görünecek.
                 "files": files
             })
     return tree
+
+# İndex.html kısmının entegre edildiği yer. Burada txt ve pdf leri baz aldım. Herhangi birinin açılmama ya da karakter sorunu olduğunda belirtecek.
 
 @app.route('/')
 def index():
@@ -58,6 +62,9 @@ def get_content():
         return jsonify({'content': content})
     return jsonify({'error': 'Dosya bulunamadı'}), 404
 
+
+# Bu kısım arama kısmı. Dokümanlar içinde belirli bir kelime ile arayınca hem o dosyaları getiriyor hem de sağ tarafta o kelimeleri vurguluyor. Detayı css ve js de.
+
 @app.route('/search')
 def search():
     query = request.args.get('q', '')
@@ -84,4 +91,4 @@ def search():
     return jsonify(results_list)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5003)
+    app.run(debug=True, port=5003)   # Buradaki port spesifik olabilir. Normalde flask 5000 i alıyrdu. Benim localde patroni 5000 olduğu için ben de kafadan bir port salladım.
