@@ -1,14 +1,14 @@
 ***************************************************** PATRONI CLUSTER KURULUMU ************************************************************
 ## Bütün makinaların hosts dosyasına aşağıdaki hostlar eklendi
 
-192.168.1.14 db01.domain db01
-192.168.1.17 db02.domain db02
-192.168.1.18 db03.domain db03
-192.168.1.19 ha01.domain ha01
-192.168.1.20 ha02.domain ha02
-192.168.1.21 etcd01.domain etcd01
-192.168.1.22 etcd02.domain etcd02
-192.168.1.23 etcd03.domain etcd03
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
+xxx.xx.x.xx #domain_name #name
 
 ## Bütün makinaların firewall servisi kapatılacak
 
@@ -18,8 +18,8 @@ systemctl disable firewalld
 ## Bütün makinalar arasında root/postgres userlarına rsa kopyalama yapılacak
 
 ssh-keygen -t rsa
-ssh-copy-id root@10.90.0.171
-ssh root@10.90.0.171 "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+ssh-copy-id root@xxx.xxx.x.xx
+ssh root@xxx.xxx.x.xx "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
 
 ## Kurulu postgres rpm paketlerini görmek için
 
@@ -94,16 +94,16 @@ vrrp_instance VI_1 {
     virtual_router_id 51
     authentication {
         auth_type PASS
-        auth_pass Kls45f3d
+        auth_pass xxxxxxxx
     }
 
 virtual_ipaddress {
-        192.168.1.98/24
+        xxx.xxx.x.xx/24
     }
 
-unicast_src_ip 192.168.1.93  # This node
+unicast_src_ip xxx.xxx.x.xx  # This node   Buraya hangi node ise onun ip bilgisi gelir
     unicast_peer {
-        192.168.1.94  # Other nodes
+        xxx.xxx.x.xx  # Other nodes
     }
 
 track_script {
@@ -133,16 +133,16 @@ vrrp_instance VI_1 {
     virtual_router_id 51
     authentication {
         auth_type PASS
-        auth_pass Kls45f3d
+        auth_pass xxx.xxx.x.xx
     }
 
 virtual_ipaddress {
-        192.168.1.98/24
+        xxx.xxx.x.xx/24
     }
 
-unicast_src_ip 192.168.1.94  # This node
+unicast_src_ip xxx.xxx.x.xx  # This node
     unicast_peer {
-        192.168.1.93  # Other nodes
+        xxx.xxx.x.xx  # Other nodes
     }
 
 track_script {
@@ -188,22 +188,22 @@ frontend a_listen_fe
     use_backend postgres if is-read-service-dead
     default_backend standby
 listen postgres
-    bind 192.168.1.24:5000
+    bind xxx.xxx.x.xx:5000
     option httpchk OPTIONS/master
     http-check expect status 200
     default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
-    server db01 192.168.1.14:5432 maxconn 1000 check port 8008
-    server db02 192.168.1.17:5432 maxconn 1000 check port 8008
-    server db03 192.168.1.18:5432 maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
 
 listen standby
-    bind 192.168.1.24:5001
+    bind xxx.xxx.x.xx:5001
     option httpchk OPTIONS/replica
     http-check expect status 200
     default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
-    server db01 192.168.1.14:5432 maxconn 1000 check port 8008
-    server db02 192.168.1.17:5432 maxconn 1000 check port 8008
-    server db03 192.168.1.18:5432 maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
 
 frontend etcd
     bind *:4400
@@ -216,9 +216,9 @@ backend etcd-master-nodes
     mode tcp
     option tcp-check
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-    server etcd01 192.168.1.21:2379 check fall 3 rise 2
-    server etcd02 192.168.1.22:2379 check fall 3 rise 2
-    server etcd03 192.168.1.23:2379 check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
 
 
 **** for node 2
@@ -244,22 +244,22 @@ frontend a_listen_fe
     use_backend postgres if is-read-service-dead
     default_backend standby
 listen postgres
-    bind 192.168.1.24:5000
+    bind xxx.xxx.x.xx:5000
     option httpchk OPTIONS/master
     http-check expect status 200
     default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
-    server db01 192.168.1.14:5432 maxconn 1000 check port 8008
-    server db02 192.168.1.17:5432 maxconn 1000 check port 8008
-    server db03 192.168.1.18:5432 maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
 
 listen standby
     bind 192.168.1.24:5001
     option httpchk OPTIONS/replica
     http-check expect status 200
     default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
-    server db01 192.168.1.14:5432 maxconn 1000 check port 8008
-    server db02 192.168.1.17:5432 maxconn 1000 check port 8008
-    server db03 192.168.1.18:5432 maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
+    server #name xxx.xxx.x.xx:#postgresql_port maxconn 1000 check port 8008
 
 frontend etcd
     bind *:4400
@@ -272,9 +272,9 @@ backend etcd-master-nodes
     mode tcp
     option tcp-check
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-    server etcd01 192.168.1.21:2379 check fall 3 rise 2
-    server etcd02 192.168.1.22:2379 check fall 3 rise 2
-    server etcd03 192.168.1.23:2379 check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
+    server #etcdname xxx.xxx.x.xx:#etcd_default_port check fall 3 rise 2
 	
 
 ## Her iki ortamda da haproxy daemon ayarları yapılır.
@@ -346,7 +346,7 @@ vi  /etc/etcd/etcd.conf
 ETCD_DATA_DIR="/var/lib/etcd"
 
 ETCD_LISTEN_PEER_URLS="http://0.0.0.0:2380"
-ETCD_LISTEN_CLIENT_URLS="http://192.168.1.23:2379,http://127.0.0.1:2379"
+ETCD_LISTEN_CLIENT_URLS="http://xxx.xxx.x.xx:#etcd_default_port,http://127.0.0.1:#etcd_default_port"
 
 #ETCD_WAL_DIR=""
 #ETCD_MAX_SNAPSHOTS="5"
@@ -362,13 +362,13 @@ ETCD_QUOTA_BACKEND_BYTES="8589934592"
 #ETCD_GRPC_KEEPALIVE_TIMEOUT="20s"
 #
 #[Clustering]
-ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.1.23:2380"
-ETCD_ADVERTISE_CLIENT_URLS="http://192.168.1.23:2379"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://xxx.xxx.x.xx:#etcd_default_port+1"
+ETCD_ADVERTISE_CLIENT_URLS="http://xxx.xxx.x.xx:#etcd_default_port"
 #ETCD_DISCOVERY=""
 #ETCD_DISCOVERY_FALLBACK="proxy"
 #ETCD_DISCOVERY_PROXY=""
 #ETCD_DISCOVERY_SRV=""
-ETCD_INITIAL_CLUSTER="etcd01=http://192.168.1.21:2380,etcd02=http://192.168.1.22:2380,etcd03=http://192.168.1.23:2380"
+ETCD_INITIAL_CLUSTER="#etcdname01=http://xxx.xxx.x.xx:#etcd_default_port+1,etcdname02=http://xxx.xxx.x.xx:#etcd_default_port+1,etcdname03=http://xxx.xxx.x.xx:#etcd_default_port+1"
 ETCD_INITIAL_CLUSTER_TOKEN="testpatroni1"
 ETCD_INITIAL_CLUSTER_STATE="new"
 #ETCD_STRICT_RECONFIG_CHECK="true"
