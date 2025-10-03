@@ -1,0 +1,212 @@
+### Find the database details in postgres
+
+-- \list+
+-- select datname from pg_database;
+
+--------------------------------------------------------------------
+
+### Find postgres databases size
+
+-- \l+
+-- SELECT pg_database.datname as "database_name", pg_size_pretty(pg_database_size(pg_database.datname)) AS size_in_mb 
+FROM pg_database ORDER by size_in_mb DESC;
+
+---------------------------------------------------------------------
+
+### Find timezone
+
+-- show timezone
+-- SELECT current_setting('TIMEZONE');
+-- select name,setting,short_desc,boot_val from pg_settings where name='TimeZone';
+
+----------------------------------------------------------------------
+
+### Find version
+
+-- select version ();
+
+----------------------------------------------------------------------
+
+### How to enable archiving (wal) in postgres
+
+** Create Directory for archiving
+-- mkdir -p /data/archive/
+
+** Update postgresql.conf with below values
+-- wal_level = replica
+   archive_mode = on
+   max_wal_senders=1
+   archive_command= 'test ! -f /data/archive/%f && cp %p /data/archive/%f'
+
+** Restart postgres server
+-- pg_ctl stop
+   pg_ctl start
+   
+** Check archive status
+-- select name,setting from pg_settings where name like 'archive%';
+
+-----------------------------------------------------------------------
+
+### Monitor query with pg_stat_statement
+
+** First create extension
+-- create extension pg_stat_statements;
+
+** And below parameters in postgresql.conf file and restart service
+-- shared_preload_libraries = 'pg_stat_statements'
+   pg_stat_statements.track = all
+   
+systemctl postgresql16.service restart
+
+** Then monitor query execution time
+-- select substr(query,1,100) query,calls,min_time/1000 "min_time(in sec)" , max_time/1000 "max_time(in sec)", mean_time/1000 "avg_time(in sec)", rows 
+from pg_stat_statements order by mean_time desc;
+
+------------------------------------------------------------------------
+
+### Find data directory locations
+
+** Specifies data directory
+-- show data_directory;
+
+** Another control method
+-- select setting from pg_settings where name = 'data_directory';
+
+** This query will show important files location
+-- SELECT name, setting FROM pg_settings WHERE category = 'File Locations';
+
+-------------------------------------------------------------------------
+
+### Find current session with query
+
+** Find session in cluster
+-- select pid as process_id,
+usename as username,
+datname as database_name,
+client_addr as client_address,
+application_name,
+backend_start,
+state,
+state_change,query
+from pg_stat_activity;
+
+** Find query in specific database
+-- select pid as process_id,
+usename as username,
+datname as database_name,
+client_addr as client_address,
+application_name,
+backend_start,
+state,
+state_change,query 
+from pg_stat_activity where datname='kerem';
+
+--------------------------------------------------------------------------
+
+### Kill session with pid
+
+-- select pg_terminate_backend(pid) from pg_stat_activity where pid='1123';
+
+--------------------------------------------------------------------------
+
+### Kill session for a spesific USER
+
+** Fist list all user in current sessions
+-- select datname as database, pid as pid, usename as username, application_name , client_addr, query 
+FROM pg_stat_activity where username='postgres';
+
+** Then kill all session of user in postgres
+-- select pg_terminate_backend(pid) from pg_stat_activity where usename='kerem';
+
+--------------------------------------------------------------------------
+
+### Find blocking sessions
+
+-- select pid as blocked_pid, usename, pg_blocking_pids(pid) as "blocked_by(pid)", query as blocked_query 
+from pg_stat_activity where cardinality(pg_blocking_pids(pid)) > 0;
+
+--------------------------------------------------------------------------
+
+### List extensions
+
+** List installed extensions
+-- \dx  or  \dx+
+-- SELECT * FROM pg_extension;
+
+** List available extension in server
+-- SELECT * FROM pg_available_extensions;
+
+---------------------------------------------------------------------------
+
+### Find startup time and uptime server
+
+** Startup time
+-- SELECT pg_postmaster_start_time();
+
+** Uptime or server
+-- SELECT now() - pg_postmaster_start_time() "uptime";
+
+----------------------------------------------------------------------------
+
+### Archiver process status
+-- select * from pg_stat_archiver;
+
+-----------------------------------------------------------------------------
+
+### Pg reload with query and find last config reload time
+
+** Pg reload
+-- select pg_reload_conf();
+
+** Last pg config reload time
+-- select pg_conf_load_time() ;
+
+-----------------------------------------------------------------------------
+
+### Manual wal switch
+-- select pg_switch_wal();
+
+-----------------------------------------------------------------------------
+
+### Monitor archiving progress
+
+-- select pg_walfile_name(pg_current_wal_lsn()),last_archived_wal,last_failed_wal,
+('x'||substring(pg_walfile_name(pg_current_wal_lsn()),9,8))::bit(32)::int*256 +
+('x'||substring(pg_walfile_name(pg_current_wal_lsn()),17))::bit(32)::int -
+('x'||substring(last_archived_wal,9,8))::bit(32)::int*256 -
+('x'||substring(last_archived_wal,17))::bit(32)::int
+as diff from pg_stat_archiver;
+
+------------------------------------------------------------------------------
+
+### Modify connection limit
+
+** View existing connection limit settings
+-- select datname,datallowconn,datconnlimit from pg_database where datname='kerem';
+--> datconnlimit if -1, it means unlimited connections allowed
+
+** Set a spesific limit for connection
+-- alter database kerem connection limit 100;
+
+** To restrict all connection to db
+-- alter database kerem connection limit 0;
+
+-------------------------------------------------------------------------------
+
+### Wal Lists 
+
+** List all wal files present in pg_wal
+-- select * from pg_ls_waldir();
+
+** Find total size of wal
+-- select sum(size) from pg_ls_waldir();
+
+** Find current wal file lsn
+-- select pg_current_wal_insert_lsn(),pg_current_wal_lsn();
+
+-------------------------------------------------------------------------------
+
+### Temp file usage on database
+-- SELECT datname, temp_files, temp_bytes, stats_reset FROM pg_stat_database;
+
+-------------------------------------------------------------------------------

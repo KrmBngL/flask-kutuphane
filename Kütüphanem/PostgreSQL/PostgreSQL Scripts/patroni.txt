@@ -1,0 +1,108 @@
+****************** PATRONI CLUSTER HA ******************
+
+**** DB NODE x 3 ****
+
+## Sanal sunucu kurulumu yapıldı.
+## network ayarında ağ bağdaştırıcıs 1 NAT , 2 ise host-only
+## İlk db sunucusu kurulduktan sonra diğer iki db sunucuları clone ile oluşturuldu.
+## Her 3 sunucuda da ip adresleri aşağıdaki gibi verilip, /etc/hosts dosyasına eklendi. 
+
+192.168.56.101 pgdb01.domain pgdb01
+192.168.56.102 pgdb02.domain pgdb02
+192.168.56.103 pgdb03.domain pgdb03
+
+## systemctl stop firewalld
+   systemctl disable firewalld
+
+## dnf install -y epel-release
+## dnf install -y yum-utils
+
+## PostgreSQL 16 kurulumu
+-- dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+-- dnf config-manager --enable pgdg16
+-- dnf module disable -y postgresql
+-- dnf install -y postgresql16-server
+-- mkdir -P /data/16/main
+-- chown -R postgres:postgres /data/16/main/
+-- vi /usr/lib/systemd/system/postgresql-16.service
+-- Environment = /data/16/main
+-- systemctl daemon-reload
+-- /usr/pgsql-16/bin/postgresql-16-setup  initdb
+-- sudo systemctl enable postgresql-16
+-- sudo systemctl start postgresql-16
+
+**** ETCD NODE x3 ****
+## Her 3 sunucuda da ip adresleri aşağıdaki gibi verilip, /etc/hosts dosyasına eklendi. 
+
+192.168.56.106 pgetcd01.domain pgetcd01
+192.168.56.107 pgetcd02.domain pgetcd02
+192.168.56.108 pgetcd03.domain pgetcd03
+
+
+## nano /etc/yum.repos.d/etcd.repo
+[etcd]
+name=PostgreSQL common RPMs for THEL / oracle $releasever - $basearch
+baseurl=http://ftp.postgresql.org/pub/repos/yum/common/pgdg-rhel8-extras/redhat/rhel-$releasever-$basearch
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-PGDG
+repo-gpgcheck=1
+
+## dnf makecache
+## dnf install -y etcd
+## Node1'de  mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.orig
+## nano /etc/etcd/etcd.conf
+
+ETCD_NAME=pgdb01
+ETCD_DATA_DIR="/var/lib/etcd/pgetcd01"
+ETCD_LISTER_PEER_URLS="http://192.168.56.101:2380"
+ETCD_LISTER_CLIENT_URLS="http://192.168.56.101:2379"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.56.101:2380"
+ETCD_INITIAL_CLUSTER="pgdb01=http://192.168.56.101:2380,pgdb02=http://192.168.56.102:2380,pgdb03=http://192.168.56.103:2380"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.56.101:2379"
+ETCD_ENABLE_V2="true"
+
+## Node2'de  mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.orig
+## nano /etc/etcd/etcd.conf
+
+ETCD_NAME=pgdb02
+ETCD_DATA_DIR="/var/lib/etcd/pgdb02"
+ETCD_LISTER_PEER_URLS="http://192.168.56.102:2380"
+ETCD_LISTER_CLIENT_URLS="http://192.168.56.102:2379"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.56.102:2380"
+ETCD_INITIAL_CLUSTER="pgdb01=http://192.168.56.101:2380,pgdb02=http://192.168.56.102:2380,pgdb03=http://192.168.56.103:2380"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.56.102:2379"
+ETCD_ENABLE_V2="true"
+
+## Node3'te  mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.orig
+## nano /etc/etcd/etcd.conf
+
+ETCD_NAME=pgdb03
+ETCD_DATA_DIR="/data/pgdb03"
+ETCD_LISTER_PEER_URLS="http://192.168.56.103:2380"
+ETCD_LISTER_CLIENT_URLS="http://192.168.56.103:2379"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.56.103:2380"
+ETCD_INITIAL_CLUSTER="pgdb01=http://192.168.56.101:2380,pgdb02=http://192.168.56.102:2380,pgdb03=http://192.168.56.103:2380"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.56.103:2379"
+ETCD_ENABLE_V2="true"
+
+
+## 3 node da birden aşağıdakini .bash_profile a gireriz.
+
+export PGDATA=/data/16/main
+export ETCDCTL_API="3"
+export pgdb_ETCD_URL="http://127.0.0.1:2379"
+export pgdb_SCOPE="pg_cluster"
+pgdb01=192.168.56.101
+pgdb02=192.168.56.102
+pgdb03=192.168.56.103
+ENDPOINTS=$pgdb01:2379,$pgdb02:2379,$pgdb03:2379
+
+## source ~/.bash_profile
+## etcdctl --write-out=table --endpoints=pgdb01:2379 member list

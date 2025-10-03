@@ -1,0 +1,42 @@
+******************************************** REORG VACUUM FOR A TABLE *************************************
+
+### Vacuum a tabe
+
+-- vacuum deneme.test;
+
+### Both vacuum and analyze
+
+-- vacuum analyze deneme.test;
+
+### with verbose
+
+-- vacuum verbose analyze deneme.test;
+
+### Monitor vacuum process ( if vacuum process run for a long time )
+
+-- select * from pg_stat_progress_vacuum;
+
+### Check vacuum related information for the table
+
+-- select schemaname,relname,last_vacuum,vacuum_count from pg_stat_user_tables where relname='test';
+
+### Vacuum full for table
+
+***** FULL çalışma işlemi ekstra arşiv üreteceğinden, disk üzerinde yeterli alan olmasına dikkat edilmelidir.
+
+****** Aşağıdaki örnekte, tabloya full yapmadan önce boyutuna bakarız. Birkaç data sileriz, sonra tekrar boyutuna bakarız.
+****** Boyutu yine aynı ise, vacuum full basarız tabloya. Sonra tekrar boyutuna bakarız ki düşmüş.
+
+-- vacuum full deneme.test
+
+### Check existing space and delete some data(s)
+
+-- select pg_size_pretty(pg_relation_size('deneme.test'));
+-- delete from deneme.test where oid=#####;
+
+** We can observer size is still same
+-- select pg_size_pretty(pg_relation_size('deneme.test'));
+
+** Run vacuum full
+-- vacuum full deneme.test
+-- select pg_size_pretty(pg_relation_size('deneme.test'));

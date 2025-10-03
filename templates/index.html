@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kütüphanem</title>
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-coy.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <aside id="sidebar">
+        <h3>Kütüphanem</h3>
+        
+        <button id="home-button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span>Ana Sayfa</span>
+        </button>
+
+        <input type="search" id="search-box" placeholder="Dokümanlarda ara...">
+        <hr>
+        <div id="file-list">
+            {% for tech_item in file_tree %}
+                <div class="tech-section">
+                    <h4 class="tech-title accordion-toggle">
+                        <img src="{{ url_for('static', filename='images/' + tech_item.logo) }}" class="logo">
+                        {{ tech_item.name }}
+                        <span class="arrow">▼</span>
+                    </h4>
+                    <ul class="file-list-ul hidden">
+                        {% for file in tech_item.files %}
+                            <li class="file-item" data-path="{{ 'Kütüphanem' }}/{{ tech_item.name }}/{{ file }}">{{ file }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </div>
+        <div id="search-results" style="display:none;">
+            <h4>Arama Sonuçları</h4>
+            <ul id="results-list"></ul>
+        </div>
+    </aside>
+
+    <main id="content-area">
+        <div class="welcome-message">
+            <h1>Merhaba</h1>
+            <p>Teknoloji dokümanlarının yer aldığı bu harika kütüphaneye hoş geldiniz.</p>
+        </div>
+        
+        <div id="document-viewer">
+            <div id="document-header"></div>
+            <div id="document-content"></div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+### Analyze stats for a table
+
+-- analyze tablekerem;
+
+### Analyze for selected columns of table
+
+-- analyze deneme.test(id,name);
+--> deneme is schema
+
+-- select relname,reltuples from pg_class where relname in ('tablekerem','test');
+
+### Last analyze check
+
+-- select schemaname,relname,analyze_count,last_analyze,last_autoanalyze from pg_stat_user_tables where relname in ('tablekerem','test');
+
+### Analyze with verbose command
+
+-- analyze verbose deneme.test(id,name);
+
+### 

@@ -1,0 +1,692 @@
+***************************************************** PATRONI CLUSTER KURULUMU ************************************************************
+## Bütün makinaların hosts dosyasına aşağıdaki hostlar eklendi
+
+192.168.1.90 dbnode-01 dbnode-01
+192.168.1.91 dbnode-02 dbnode-02
+192.168.1.92 dbnode-03 dbnode-03
+192.168.1.93 haproxy-01 haproxy-01
+192.168.1.94 haproxy-02 haproxy-02
+192.168.1.95 etcd-01 etcd-01
+192.168.1.96 etcd-02 etcd-02
+192.168.1.97 etcd-03 etcd-03
+
+
+### manuel ip ve diğer ayarlar
+nmcli con mod enp0s3 ipv4.gateway 192.168.1.1
+nmcli con mod enp0s3 ipv4.method manual ipv4.addresses 192.168.1.90/24
+nmcli con mod enp0s3 ipv4.dns "8.8.8.8 1.1.1.1"
+nmcli con up enp0s3
+
+
+## Bütün makinaların firewall servisi kapatılacak
+
+systemctl stop firewalld
+systemctl disable firewalld
+
+## Bütün makinalar arasında root/postgres userlarına rsa kopyalama yapılacak
+
+ssh-keygen -t rsa
+ssh-copy-id root@10.90.0.171
+ssh root@10.90.0.171 "chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+
+## Kurulu postgres rpm paketlerini görmek için
+
+rpm -qa|grep postgres
+
+## Bütün makinalarda selinux disabled yapılacak ve reboot edilecek.
+
+vi /etc/selinux/configure
+SELINUX = disabled
+
+## Bütün makinalarda epel ve yum-utils eklenecek
+
+yum install -y epel-release
+yum install -y util-lists
+
+dnf install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+------------------------------------------------------HAProxy and Keepalived Installation
+
+yum groupinstall "Development Tools" -y
+
+dnf install openssl -y
+wget https://www.keepalived.org/software/keepalived-2.3.2.tar.gz
+tar xvzf keepalived-2.3.2.tar.gz
+cd keepalived-2.3.2
+yum install -y gcc
+./configure
+make
+make install
+mkdir -p /etc/keepalived
+
+## HA nodelarda service daemon config işlemi yapılır.
+
+vi /usr/lib/systemd/system/keepalived.service
+
+[Unit]
+Description=LVS and VRRP High Availability Monitor
+After=network-online.target syslog.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+PIDFile=/run/keepalived.pid
+KillMode=process
+EnvironmentFile=-/etc/sysconfig/keepalived
+ExecStart=/usr/sbin/keepalived --dont-fork $KEEPALIVED_OPTIONS
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+
+******************************* first node for ha ************************
+
+##keepalived conf açılır ve aşağıdaki parametreler eklenir.
+
+vi /etc/keepalived/keepalived.conf
+
+global_defs {
+}
+
+vrrp_script chk_haproxy {
+    script "killall -0 haproxy" # widely used idiom
+    interval 2 # check every 2 seconds
+    weight 2 # add 2 points of prio if OK
+}
+
+vrrp_instance VI_1 {
+    interface ens192
+    state MASTER
+    priority 101
+    virtual_router_id 51
+    authentication {
+        auth_type PASS
+        auth_pass Kls45f3d
+    }
+
+virtual_ipaddress {
+        10.34.210.80/24
+    }
+
+unicast_src_ip 10.34.210.84  # This node
+    unicast_peer {
+        10.34.210.85  # Other nodes
+    }
+
+track_script {
+        chk_haproxy
+    }
+}
+
+******************************* second node for ha ************************
+
+##keepalived conf açılır ve aşağıdaki parametreler eklenir.
+
+vi /etc/keepalived/keepalived.conf
+
+global_defs {
+}
+
+vrrp_script chk_haproxy {
+    script "killall -0 haproxy" # widely used idiom
+    interval 2 # check every 2 seconds
+    weight 2 # add 2 points of prio if OK
+}
+
+vrrp_instance VI_1 {
+    interface ens192
+    state BACKUP
+    priority 100
+    virtual_router_id 51
+    authentication {
+        auth_type PASS
+        auth_pass Kls45f3d
+    }
+
+virtual_ipaddress {
+        10.34.210.80/24
+    }
+
+unicast_src_ip 10.34.210.85  # This node
+    unicast_peer {
+        10.34.210.84  # Other nodes
+    }
+
+track_script {
+        chk_haproxy
+    }
+}
+
+
+## Her iki node üzerinde de keepalived enable ve start yapılır.
+
+systemctl enable keepalived
+systemctl start keepalived
+
+
+## Keepalived bittikten sonra haproxy için her iki node üzerinde de config işlemleri yapılır. Tar dosyası indirilir ve cfg dosyası düzenlenir.
+
+wget https://www.haproxy.org/download/3.1/src/haproxy-3.1.5.tar.gz
+tar xzzf haproxy-3.1.5.tar.gz
+cd haproxy-3.1.5
+make TARGET=linux-glibc
+make install
+mkdir -p /etc/haproxy
+vi /etc/haproxy/haproxy.cfg
+
+global
+    maxconn 1000
+    log 127.0.0.1 local0
+defaults
+    log global
+    mode tcp
+    retries 2
+    timeout client 120m
+    timeout connect 4s
+    timeout server 120m
+    timeout check 5s
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+frontend a_listen_fe
+    acl is-read-service-dead nbsrv(standby) lt 1
+    use_backend postgres if is-read-service-dead
+    default_backend standby
+listen postgres
+    bind 10.34.210.80:5000
+    option httpchk OPTIONS/master
+    http-check expect status 200
+    default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
+    server dd-pgdb01 10.34.210.81:5432 maxconn 1000 check port 8008
+    server dd-pgdb02 10.34.210.82:5432 maxconn 1000 check port 8008
+    server dd-pgdb03 10.34.210.83:5432 maxconn 1000 check port 8008
+
+listen standby
+    bind 10.34.210.80:5001
+    option httpchk OPTIONS/replica
+    http-check expect status 200
+    default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
+    server dd-pgdb01 10.34.210.81:5432 maxconn 1000 check port 8008
+    server dd-pgdb02 10.34.210.82:5432 maxconn 1000 check port 8008
+    server dd-pgdb03 10.34.210.83:5432 maxconn 1000 check port 8008
+
+frontend etcd
+    bind *:4400
+    option tcplog
+    mode tcp
+    default_backend etcd-master-nodes
+
+
+backend etcd-master-nodes
+    mode tcp
+    option tcp-check
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server dd-pgetcd01 10.34.210.86:2379 check fall 3 rise 2
+    server dd-pgetcd02 10.34.210.87:2379 check fall 3 rise 2
+    server dd-pgetcd03 10.34.210.88:2379 check fall 3 rise 2
+
+
+**** for node 2
+
+global
+    maxconn 1000
+    log 127.0.0.1 local0
+defaults
+    log global
+    mode tcp
+    retries 2
+    timeout client 120m
+    timeout connect 4s
+    timeout server 120m
+    timeout check 5s
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+frontend a_listen_fe
+    acl is-read-service-dead nbsrv(standby) lt 1
+    use_backend postgres if is-read-service-dead
+    default_backend standby
+listen postgres
+    bind 10.34.210.80:5000
+    option httpchk OPTIONS/master
+    http-check expect status 200
+    default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
+    server dd-pgdb01 10.34.210.81:5432 maxconn 1000 check port 8008
+    server dd-pgdb02 10.34.210.82:5432 maxconn 1000 check port 8008
+    server dd-pgdb03 10.34.210.83:5432 maxconn 1000 check port 8008
+
+listen standby
+    bind 10.34.210.80:5001
+    option httpchk OPTIONS/replica
+    http-check expect status 200
+    default-server inter 3s fall 4 rise 3 on-marked-down shutdown-sessions
+    server dd-pgdb01 10.34.210.81:5432 maxconn 1000 check port 8008
+    server dd-pgdb02 10.34.210.82:5432 maxconn 1000 check port 8008
+    server dd-pgdb03 10.34.210.83:5432 maxconn 1000 check port 8008
+
+frontend etcd
+    bind *:4400
+    option tcplog
+    mode tcp
+    default_backend etcd-master-nodes
+
+
+backend etcd-master-nodes
+    mode tcp
+    option tcp-check
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server dd-pgetcd01 10.34.210.86:2379 check fall 3 rise 2
+    server dd-pgetcd02 10.34.210.87:2379 check fall 3 rise 2
+    server dd-pgetcd03 10.34.210.88:2379 check fall 3 rise 2
+	
+
+## Her iki ortamda da haproxy daemon ayarları yapılır.
+
+vi /usr/lib/systemd/system/haproxy.service
+
+[Unit]
+Description=HAProxy Load Balancer
+Documentation=man:haproxy(1)
+Documentation=file:/usr/local/doc/haproxy/configuration.txt
+# allows us to do millisecond level restarts without triggering alert in Systemd
+#StartLimitInterval=0
+#StartLimitBurst=0
+After=network.target syslog.service
+Wants=syslog.service
+
+[Service]
+Environment="CONFIG=/etc/haproxy/haproxy.cfg" "PIDFILE=/run/haproxy.pid"
+# EXTRAOPTS and RELOADOPS come from this default file
+# EnvironmentFile=-/etc/default/haproxy
+ExecStartPre=/usr/local/sbin/haproxy -f $CONFIG -c -q
+ExecStart=/usr/local/sbin/haproxy -W -f $CONFIG -p $PIDFILE $EXTRAOPTS
+ExecReload=/usr/local/sbin/haproxy -f $CONFIG -c -q $EXTRAOPTS $RELOADOPTS
+ExecReload=/bin/kill -USR2 $MAINPID
+KillMode=mixed
+#Restart=always
+#Type=forking
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+
+## Servisler enable ve start edilir.
+
+systemctl enable haproxy.service
+systemctl start haproxy.service
+
+
+
+------------------------------------------------------ETCD Installation
+
+## Etcd nin son versiyonunu aşağıdaki şekilde oluştururuz ve bazı klasörleri oluştururuz
+
+dnf -y install curl wget vim
+ETCD_RELEASE=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest | grep tag_name | cut -d '"' -f 4)
+wget https://github.com/etcd-io/etcd/releases/download/${ETCD_RELEASE}/etcd-${ETCD_RELEASE}-linux-amd64.tar.gz
+
+wget https://github.com/etcd-io/etcd/releases/etcd-v3.4.37-linux-amd64.tar.gz
+
+tar xvf etcd-${ETCD_RELEASE}-linux-amd64.tar.gz
+cd etcd-${ETCD_RELEASE}-linux-amd64
+mv etcd* /usr/local/bin
+etcd --version
+etcdctl version
+
+mkdir -p /var/lib/etcd/
+mkdir /etc/etcd
+groupadd --system etcd
+useradd -s /sbin/nologin --system -g etcd etcd
+chown -R etcd:etcd /var/lib/etcd
+chmod 0775 /var/lib/etcd/
+
+
+## Etcd conf dosyasını düzenleriz. Her node için conf dosyasında ip ve etcd name i kendi sunucu bilgisine göre düzenleriz.
+
+vi  /etc/etcd/etcd.conf
+
+#[Member]
+#ETCD_CORS=""
+ETCD_DATA_DIR="/var/lib/etcd"
+
+ETCD_LISTEN_PEER_URLS="http://0.0.0.0:2380"
+ETCD_LISTEN_CLIENT_URLS="http://192.168.1.86:2379,http://127.0.0.1:2379"
+
+#ETCD_WAL_DIR=""
+#ETCD_MAX_SNAPSHOTS="5"
+#ETCD_MAX_WALS="5"
+ETCD_NAME="etcd-01"
+#ETCD_SNAPSHOT_COUNT="100000"
+ETCD_HEARTBEAT_INTERVAL="1000"
+ETCD_ELECTION_TIMEOUT="5000"
+ETCD_QUOTA_BACKEND_BYTES="8589934592"
+#ETCD_MAX_REQUEST_BYTES="1572864"
+#ETCD_GRPC_KEEPALIVE_MIN_TIME="5s"
+#ETCD_GRPC_KEEPALIVE_INTERVAL="2h0m0s"
+#ETCD_GRPC_KEEPALIVE_TIMEOUT="20s"
+#
+#[Clustering]
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.1.86:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.1.86:2379"
+#ETCD_DISCOVERY=""
+#ETCD_DISCOVERY_FALLBACK="proxy"
+#ETCD_DISCOVERY_PROXY=""
+#ETCD_DISCOVERY_SRV=""
+ETCD_INITIAL_CLUSTER="etcd-01=http://192.168.1.86:2380,etcd-02=http://192.168.1.87:2380,etcd-03=http://192.168.1.88:2380"
+ETCD_INITIAL_CLUSTER_TOKEN="testpatroni1"
+ETCD_INITIAL_CLUSTER_STATE="new"
+#ETCD_STRICT_RECONFIG_CHECK="true"
+#ETCD_ENABLE_V2="true"
+#
+#[Proxy]
+#ETCD_PROXY="off"
+#ETCD_PROXY_FAILURE_WAIT="5000"
+#ETCD_PROXY_REFRESH_INTERVAL="30000"
+#ETCD_PROXY_DIAL_TIMEOUT="1000"
+#ETCD_PROXY_WRITE_TIMEOUT="5000"
+#ETCD_PROXY_READ_TIMEOUT="0"
+#
+#[Security]
+#ETCD_CERT_FILE=""
+#ETCD_KEY_FILE=""
+#ETCD_CLIENT_CERT_AUTH="false"
+#ETCD_TRUSTED_CA_FILE=""
+#ETCD_AUTO_TLS="false"
+#ETCD_PEER_CERT_FILE=""
+#ETCD_PEER_KEY_FILE=""
+#ETCD_PEER_CLIENT_CERT_AUTH="false"
+#ETCD_PEER_TRUSTED_CA_FILE=""
+#ETCD_PEER_AUTO_TLS="false"
+#
+#[Logging]
+#ETCD_DEBUG="false"
+#ETCD_LOG_PACKAGE_LEVELS=""
+#ETCD_LOG_OUTPUT="default"
+#
+#[Unsafe]
+#ETCD_FORCE_NEW_CLUSTER="false"
+#
+#[Version]
+#ETCD_VERSION="false"
+ETCD_AUTO_COMPACTION_MODE="periodic"
+ETCD_AUTO_COMPACTION_RETENTION="2h"
+#
+#[Profiling]
+#ETCD_ENABLE_PPROF="false"
+#ETCD_METRICS="basic"
+#
+#[Auth]
+#ETCD_AUTH_TOKEN="simple"
+
+
+## Etcd Daemon düzenleriz
+vi /usr/lib/systemd/system/etcd.service
+
+[Unit]
+Description=Etcd - Highly Available Key Value Store
+Documentation=man:etcd
+After=network.target
+Wants=network-online.target
+
+[Service]
+Environment=DAEMON_ARGS=
+Environment=ETCD_NAME=%H
+Environment=ETCD_DATA_DIR=/var/lib/etcd/default
+EnvironmentFile=/etc/etcd/etcd.conf
+Type=notify
+User=etcd
+PermissionsStartOnly=true
+ExecStart=/usr/local/bin/etcd
+Restart=on-abnormal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+
+
+## Etcd servisini enable ve start yaparız.
+
+systemctl daemon-reload
+systemctl enable etcd.service
+systemctl start etcd.service
+
+
+##Etcdleri listeleriz
+
+etcdctl --write-out=table  member list
+etcdctl endpoint status --write-out=table
+etcdctl --write-out=table --endpoints=$ENDPOINTS endpoint status
+etcdctl --endpoints=$ENDPOINTS endpoint health
+etcdctl --cluster endpoint hashkv  --write-out=table
+
+[root@dd-pgetcd01 ~]# etcdctl -w table --endpoints=etcd-01:2379,etcd-02:2379,etcd-03:2379 endpoint status
++------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+|     ENDPOINT     |        ID        | VERSION | DB SIZE | IS LEADER | IS LEARNER | RAFT TERM | RAFT INDEX | RAFT APPLIED INDEX | ERRORS |
++------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+| dd-pgetcd01:2379 | 1aa6321a88400565 |  3.5.19 |   20 kB |      true |      false |         2 |          9 |                  9 |        |
+| dd-pgetcd02:2379 |  9ae5859d052bf43 |  3.5.19 |   20 kB |     false |      false |         2 |          9 |                  9 |        |
+| dd-pgetcd03:2379 | f8775f9de9533f7d |  3.5.19 |   20 kB |     false |      false |         2 |          9 |                  9 |        |
++------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+
+
+
+
+------------------------------------------------------------------ PATRONI Installation  ( PG 16 )
+
+## PostgreSQL kurulum için bazı adımları uygularız.
+
+dnf -qy module disable postgresql
+dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+## Test ve prod ortamda aynı veya tüm paketlerin kurulması gerekmiyor. Öncesinde postgresql16 ile hangi paketlerin geldiğini görebiliriz.
+
+yum list  postgresql16* -y
+
+## Listelenen paketlerin kurulumunu yaparız.
+
+yum install -y postgresql16.x86_64 postgresql16-contrib.x86_64 postgresql16-docs.x86_64 postgresql16-libs.x86_64 postgresql16-llvmjit.x86_64 postgresql16-odbc.x86_64 postgresql16-plperl.x86_64 postgresql16-plpython3.x86_64 postgresql16-pltcl.x86_64 postgresql16-server.x86_64 postgresql16-tcl.x86_64
+
+yum install -y patroni python3-urllib3
+dnf install -y patroni-etcd
+
+## Patroni versiyon kontrolü yaparız.
+
+[root@dd-pgdb01 ~]# patronictl version
+patronictl version 4.0.5
+[root@dd-pgdb01 ~]# patroni --version
+patroni 4.0.5
+[root@dd-pgdb01 ~]#
+
+## pgbackrest kurulumu yaparız.
+
+yum install pgbackrest.x86_64 -y
+
+mkdir -p /var/log/patroni/log5432
+chown -R postgres:postgres /var/log/patroni/log5432
+mkdir -p /pg_cluster/
+mkdir -p /data_oms/data
+chown postgres:postgres -R /data_oms
+chmod 750 /data_oms/data
+
+## Patroni yml dosyasını düzenleriz. Her 3 node üzerinde de kendi ip ve host bilgilerini gireriz.
+
+vi /etc/patroni/patroni-5432.yml    ( 5432 dememizin sebebi, başka bir port üzerinde cluster açar isek, yml dosyaları ve servisi belli olsun diye )
+
+scope: testpatroni1
+namespace: /pg_cluster/
+name: dd-pgdb01
+
+log:
+ dir: /var/log/patroni/log5432
+
+restapi:
+    listen: 10.34.210.81:8008
+    connect_address: 10.34.210.81:8008
+
+etcd3:
+    host: 10.34.210.86:2379
+    host: 10.34.210.87:2379
+    host: 10.34.210.88:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_command: '/usr/bin/pgbackrest --stanza=testpatroni1_pgbackrest --config=/etc/pgbackrest.conf archive-push %p'
+        archive_mode: on
+        auto_explain.log_min_duration: 3000
+        autovacuum: on
+        bgwriter_delay: 50ms
+        bgwriter_lru_maxpages: 1000
+        bgwriter_lru_multiplier: 10.0
+        default_statistics_target: 1000
+        effective_io_concurrency: 200
+        hot_standby: 'on'
+        lc_messages: 'en_US.UTF-8'
+        listen_addresses: '*'
+        log_autovacuum_min_duration: 0
+        log_checkpoints: on
+        log_connections: on
+        log_disconnections: on
+        log_lock_waits: on
+        log_min_duration_statement: 3000
+        log_rotation_age: 1h
+        log_truncate_on_rotation: on
+        maintenance_work_mem: 2GB
+        max_connections: 1000
+        max_worker_processes: 24
+        pg_stat_statements.max: 10000
+        pg_stat_statements.track: all
+        random_page_cost: 2.0
+        shared_buffers: 72GB
+        shared_preload_libraries: 'pg_stat_statements, auto_explain'
+        superuser_reserved_connections: 50
+        track_activity_query_size: 4096
+        wal_keep_size: 30GB
+        wal_level: replica
+        work_mem: 256MB
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+    - lc-collate: "en_US.UTF-8"
+    - lc-ctype: "en_US.UTF-8"
+
+  pg_hba:
+
+    - local   all             all                                     trust
+    - host    all             all             127.0.0.1/32            trust
+    - host replication     replicator         127.0.0.1/32            md5
+    - host replication     replicator         10.34.210.81/32         md5
+    - host replication     replicator         10.34.210.82/32         md5
+    - host replication     replicator         10.34.210.83/32         md5
+    - host    all             all             10.34.200.0/24          md5
+    - host    all             all             10.34.210.0/24          md5
+    - host    all             all             10.112.10.0/24          md5
+
+users:
+  admin:
+    password: admin
+    options:
+      - createrole
+      - createdb
+
+postgresql:
+  listen: 10.34.210.81:5432
+  connect_address: 10.34.210.81:5432
+  data_dir: /data_oms/data
+  bin_dir: /usr/pgsql-16/bin
+  pgpass: /var/lib/pgsql/.pgpass
+  authentication:
+    replication:
+      username: replicator
+      password: PgPassMaster2025!*
+    superuser:
+      username: postgres
+      password: PgPassMaster2025!*
+  create_replica_methods:
+    - pgbackrest
+    - basebackup
+  pgbackrest:
+   command: pgbackrest --stanza=testpatroni1_pgbackrest restore --type=none
+   keep_data: True
+   no_params: True
+  basebackup:
+    checkpoint: 'fast'
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
+  
+ 
+##Daemon bilgilerini de gireriz.
+
+vi /usr/lib/systemd/system/patroni-5432.service 
+
+[Unit]
+Description=Runners to orchestrate a high-availability PostgreSQL
+After=syslog.target network.target
+
+[Service]
+Type=simple
+
+User=postgres
+Group=postgres
+
+# Read in configuration file if it exists, otherwise proceed
+#EnvironmentFile=-/etc/patroni_env.conf
+
+# WorkingDirectory=/var/lib/pgsql
+
+# Where to send early-startup messages from the server
+# This is normally controlled by the global default set by systemd
+#StandardOutput=syslog
+
+# Pre-commands to start watchdog device
+# Uncomment if watchdog is part of your patroni setup
+#ExecStartPre=-/usr/bin/sudo /sbin/modprobe softdog
+#ExecStartPre=-/usr/bin/sudo /bin/chown postgres /dev/watchdog
+
+# Start the patroni process
+ExecStart=/usr/bin/patroni /etc/patroni/patroni-5432.yml
+
+# Send HUP to reload from patroni.yml
+ExecReload=/usr/bin/kill -s HUP $MAINPID
+
+# only kill the patroni process, not it's children, so it will gracefully stop postgres
+KillMode=process
+
+# Give a reasonable amount of time for the server to start up/shut down
+TimeoutSec=30
+
+# Do not restart the service if it crashes, we want to manually inspect database on failure
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+## Servisi enable ve start ederiz.
+
+systemctl enable patroni-5432.service
+systemctl start patroni-5432.service
+
+## İşlemler bitince patronictl ile nodeları listeleyebiliriz.
+
+patronictl -c /etc/patroni/patroni-5432.yml list
+
